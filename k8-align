@@ -1,44 +1,34 @@
 #!/usr/bin/env bash
 
-THREADS=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
-SCRIPT_NAME=$(basename "$0")
-
-
-main() {
-    info "Starting with ${SCRIPT_NAME}"
-
-    info "Hello world!"
-
-    info "Finished with ${SCRIPT_NAME}"
-}
-
-msg() {
-    local msg_type=$1 && shift
-    local msg_content=$* && shift
-    echo "[${msg_type}] $(date +'%y%m%d %T') - ${msg_content}"
-}
-
-tool_exists_or_die() {
-    local tool=$1 && shift
-    command -v "${tool}" >/dev/null 2>&1 || die "Tool '${tool}' not found"
-}
-
-file_exists_or_die() {
-    local file=$1 && shift
-    [[ -f "${file}" ]] || die "File '${file}' not found"
-}
-
-die() {
-    msg "ERROR" "$@" >&2
+function printUsage(){
+    echo "USAGE: $0 run"
     exit 1
 }
 
-warn() {
-    msg "WARN" "$@" >&2
+function run() {
+    pod_name="$(echo "k8-align-test" | awk '{print tolower($0)}')"
+    clean_pod_name="$(echo "${pod_name}" | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+
+    # Make sure correct credentials are available
+    gcloud container clusters get-credentials rerun-cluster --region europe-west4 --project hmf-crunch || exit 1
+
+    sed \
+    -e "s/VAR_POD_NAME/${clean_pod_name}/g" \
+    k8/hmf-crunch/deploy.yaml \
+    | kubectl create -f -
 }
 
-info() {
-    msg "INFO" "$@"
-}
+if [ $# -lt 1 ]; then  # TODO: bump this back up if there are actual arguments
+  printUsage
+fi
 
-main
+CMD=$1 && shift
+
+case $CMD in
+run)
+    run "$@"
+    ;;
+*)
+    printUsage
+    ;;
+esac

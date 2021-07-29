@@ -1,0 +1,18 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: VAR_POD_NAME
+  labels:
+    app: k8-align
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      containers:
+        - name: VAR_POD_NAME
+          image: eu.gcr.io/hmf-build/k8-align:0.1
+          imagePullPolicy: Always
+          args: []
+      imagePullSecrets:
+        - name: container-registry-reader
+      restartPolicy: Never

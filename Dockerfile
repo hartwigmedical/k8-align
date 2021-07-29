@@ -4,9 +4,9 @@ FROM google/cloud-sdk:317.0.0
 RUN apt-get update
 
 # add script
-COPY k8-align k8-align
+COPY align align
 
 # final preparations
-RUN chmod +x k8-align
+RUN chmod +x align
 
-ENTRYPOINT ["./k8-align"]
+ENTRYPOINT ["./align"]
