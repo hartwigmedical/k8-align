@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+THREADS=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
+SCRIPT_NAME=$(basename "$0")
+
+
+main() {
+    info "Starting with ${SCRIPT_NAME}"
+
+    info "Hello world!"
+
+    info "Finished with ${SCRIPT_NAME}"
+}
+
+msg() {
+    local msg_type=$1 && shift
+    local msg_content=$* && shift
+    echo "[${msg_type}] $(date +'%y%m%d %T') - ${msg_content}"
+}
+
+tool_exists_or_die() {
+    local tool=$1 && shift
+    command -v "${tool}" >/dev/null 2>&1 || die "Tool '${tool}' not found"
+}
+
+file_exists_or_die() {
+    local file=$1 && shift
+    [[ -f "${file}" ]] || die "File '${file}' not found"
+}
+
+die() {
+    msg "ERROR" "$@" >&2
+    exit 1
+}
+
+warn() {
+    msg "WARN" "$@" >&2
+}
+
+info() {
+    msg "INFO" "$@"
+}
+
+main
