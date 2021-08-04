@@ -12,7 +12,13 @@ spec:
         - name: VAR_POD_NAME
           image: DOCKER_IMAGE
           imagePullPolicy: Always
-          args: []
+          args: [
+              "FASTQ_INPUT",
+              "REF_GENOME",
+              "UNDEDUPLICATED_OUTPUT",
+              "NON_UMI_AWARE_DEDUPLICATED_OUTPUT",
+              "UMI_AWARE_DEDUPLICATED_OUTPUT",
+          ]
       imagePullSecrets:
         - name: container-registry-reader
       restartPolicy: Never

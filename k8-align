@@ -6,33 +6,59 @@ SCRIPT_NAME="$(basename "$0")" || exit 1
 DEFAULT_DOCKER_IMAGE_FILE_NAME="${REPO_DIR_NAME}/default_docker_image_at_k8.txt"
 
 print_usage(){
-  echo "USAGE: $0 run"
+  echo "USAGE: $0 run <many arguments>"
   echo "USAGE: $0 build --name <image-name>"
   echo "USAGE: $0 push --name <image-name>"
   echo "USAGE: $0 set-default --name <image-name>"
   echo "USAGE: $0 version"
-  echo "  <image-name> Name of the Docker image"
+  echo "Run these subcommands without arguments for more detailed documentation"
   exit 1
 }
 
 print_build_usage(){
   echo "Build new Docker image"
   echo "USAGE: $0 build --name <image-name>"
-  echo "  [-n/--name] Name of the Docker image (Required)"
+  echo "  [-n/--name]  (Required)    Name of the Docker image"
   exit 1
 }
 
 print_push_usage(){
   echo "Push Docker image to GCP. If name-version combination exists, please rebuilt and push with new name."
   echo "USAGE: $0 push --name <image-name>"
-  echo "  [-n/--name] Name of the Docker image (Required)"
+  echo "  [-n/--name]  (Required)    Name of the Docker image"
+  exit 1
+}
+
+print_run_usage(){
+  echo "Run alignment and deduplication at GCP. Deduplication is only run when the related output path is provided."
+  echo "Multiple output paths can be provided to get multiple types of output."
+  echo "USAGE: $0 push \ "
+  echo "    --pod-name <pod-name> \ "
+  echo "    --ref-genome <ref-genome> \ "
+  echo "    --fastq-input <fastq-input> \ "
+  echo "    --undeduplicated-output <undeduplicated_output> \ "
+  echo "    --non-umi-aware-deduplicated-output <non-umi-aware-deduplicated-output> \ "
+  echo "    --umi-aware-deduplicated-output <umi-aware-deduplicated-output> \ "
+  echo "    --docker-image <docker-image>"
+  echo "  [-n/--pod-name]                           (Required)    Name of the Kubernetes pod"
+  echo "  [-r/--ref-genome]                         (Required)    Ref genome to align against. Either 37 or 38."
+  echo "  [-i/--fastq-input]                        (Required)    Wildcard path that describes the FASTQ files in a bucket,"
+  echo "                                                          e.g. gs://some-bucket/*.fastq.gz"
+  echo "  [-u/--undeduplicated-output]              (Optional)    Path in bucket to output undeduplicated bam to,"
+  echo "                                                          e.g. gs://some-kind/of/path.bam"
+  echo "  [-s/--non-umi-aware-deduplicated-output]  (Optional)    Path in bucket to output bam deduplicated with sambamba markdup to,"
+  echo "                                                          e.g. gs://some-kind/of/path.bam"
+  echo "  [-a/--umi-aware-deduplicated-output]      (Optional)    Path in bucket to output bam deduplicated with umi-collapse to,"
+  echo "                                                          e.g. gs://some-kind/of/path.bam"
+  echo "  [-d/--docker-image]                       (Optional)    Name of the Docker image that should be used."
+  echo "                                                          If not provided, uses the image that has been set as default."
   exit 1
 }
 
 print_set_default_usage(){
   echo "Set Docker image as default image for runs."
   echo "USAGE: $0 set-default --name <image-name>"
-  echo "  [-n/--name] Name of the Docker image (Required)"
+  echo "  [-n/--name]  (Required)    Name of the Docker image"
   exit 1
 }
 
@@ -44,29 +70,24 @@ main() {
   local CMD=$1 && shift
   case $CMD in
   build)
-     build "$@"
-     ;;
+     build "$@";;
   push)
-     push "$@"
-     ;;
+     push "$@";;
   run)
-     run "$@"
-     ;;
+     run "$@";;
   set-default)
-     set_default "$@"
-     ;;
+     set_default "$@";;
   version)
-     version "$@"
-     ;;
+     version "$@";;
   *)
-     print_usage
-     ;;
+     print_usage;;
   esac
 }
 
 build() {
-  local UNRECOGNIZED=()
+  local unrecognized=()
   local key
+  local name
   while [[ $# -gt 0 ]]
   do
     key="$1" && shift
@@ -74,14 +95,14 @@ build() {
       -n|--name)
         name="$1" && shift;;
       *)
-        UNRECOGNIZED+=("${key}");;
+        unrecognized+=("${key}");;
     esac
   done
   
   # sanity checks
   local input_error=false
-  if [[ ! ${#UNRECOGNIZED[@]} -eq 0 ]]; then
-    print_error_msg "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+  if [[ ! ${#unrecognized[@]} -eq 0 ]]; then
+    print_error_msg "unrecognized options to ${SCRIPT_NAME}: options=(${unrecognized[*]})"
     input_error=true
   fi
   if [[ -z ${name} ]]; then
@@ -89,6 +110,7 @@ build() {
     input_error=true
   fi
   if [[ ${input_error} == true ]]; then
+    echo ""
     print_build_usage
   fi
 
@@ -100,8 +122,9 @@ build() {
 }
 
 push() {
-  local UNRECOGNIZED=()
+  local unrecognized=()
   local key
+  local name
   while [[ $# -gt 0 ]]
   do
     key="$1" && shift
@@ -109,14 +132,14 @@ push() {
       -n|--name)
         name="$1" && shift;;
       *)
-        UNRECOGNIZED+=("${key}");;
+        unrecognized+=("${key}");;
     esac
   done
 
   # sanity checks
   local input_error=false
-  if [[ ! ${#UNRECOGNIZED[@]} -eq 0 ]]; then
-    print_error_msg "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+  if [[ ! ${#unrecognized[@]} -eq 0 ]]; then
+    print_error_msg "unrecognized options to ${SCRIPT_NAME}: options=(${unrecognized[*]})"
     input_error=true
   fi
   if [[ -z ${name} ]]; then
@@ -124,6 +147,7 @@ push() {
     input_error=true
   fi
   if [[ ${input_error} == true ]]; then
+    echo ""
     print_push_usage
   fi
 
@@ -142,8 +166,9 @@ push() {
 }
 
 set_default() {
-  local UNRECOGNIZED=()
+  local unrecognized=()
   local key
+  local name
   while [[ $# -gt 0 ]]
   do
     key="$1" && shift
@@ -151,14 +176,14 @@ set_default() {
       -n|--name)
         name="$1" && shift;;
       *)
-        UNRECOGNIZED+=("${key}");;
+        unrecognized+=("${key}");;
     esac
   done
 
   # sanity checks
   local input_error=false
-  if [[ ! ${#UNRECOGNIZED[@]} -eq 0 ]]; then
-    print_error_msg "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+  if [[ ! ${#unrecognized[@]} -eq 0 ]]; then
+    print_error_msg "unrecognized options to ${SCRIPT_NAME}: options=(${unrecognized[*]})"
     input_error=true
   fi
   if [[ -z ${name} ]]; then
@@ -166,6 +191,7 @@ set_default() {
     input_error=true
   fi
   if [[ ${input_error} == true ]]; then
+    echo ""
     print_set_default_usage
   fi
 
@@ -181,22 +207,122 @@ set_default() {
 }
 
 run() {
+  local unrecognized=()
+  local key
   local pod_name
-  pod_name="$(echo "k8-align-test" | awk '{print tolower($0)}')"
-  local clean_pod_name
-  clean_pod_name="$(echo "${pod_name}" | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+  local ref_genome
+  local fastq_input
+  local undeduplicated_output
+  local non_umi_aware_deduplicated_output
+  local umi_aware_deduplicated_output
   local docker_image
-  docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default Docker image name"
+  while [[ $# -gt 0 ]]
+  do
+    key="$1" && shift
+    case $key in
+      -n|--pod-name)  # required
+        pod_name="$1" && shift;;
+      -r|--ref-genome)  # required
+        ref_genome="$1" && shift;;
+      -i|--fastq-input)  # required
+        fastq_input="$1" && shift;;
+      -u|--undeduplicated-output)  # optional
+        undeduplicated_output="$1" && shift;;
+      -s|--non-umi-aware-deduplicated-output)  # optional
+        non_umi_aware_deduplicated_output="$1" && shift;;
+      -a|--umi-aware-deduplicated-output)  # optional
+        umi_aware_deduplicated_output="$1" && shift;;
+      -d|--docker-image)  # optional
+        docker_image="$1" && shift;;
+      *)
+        unrecognized+=("${key}");;
+    esac
+  done
+
+  # sanity checks
+  local input_error=false
+  if [[ ! ${#unrecognized[@]} -eq 0 ]]; then
+    print_error_msg "unrecognized options to ${SCRIPT_NAME}: options=(${unrecognized[*]})"
+    input_error=true
+  fi
+  if [[ -z ${pod_name} ]]; then
+    print_error_msg "Variable 'pod-name' has not been set"
+    input_error=true
+  fi
+  if [[ -z ${fastq_input} ]]; then
+    print_error_msg "Variable 'fastq-input' has not been set"
+    input_error=true
+  fi
+  if [[ -z ${ref_genome} ]]; then
+    print_error_msg "Variable 'ref-genome' has not been set"
+    input_error=true
+  fi
+  if [[ -z ${undeduplicated_output} && -z ${non_umi_aware_deduplicated_output} && -z ${umi_aware_deduplicated_output} ]]; then
+    print_error_msg "Need to set at least one type of output"
+    input_error=true
+  fi
+  if [[ -n ${ref_genome} && ! "${ref_genome}" == "37" && ! "${ref_genome}" == "38" ]]; then
+    print_error_msg "Variable 'ref-genome' needs to be set to either 37 or 38"
+    input_error=true
+  fi
+  if [[ -n ${fastq_input} && ! "${fastq_input}" =~ ^gs://[*-/._a-zA-Z0-9]+.fastq.gz$ ]]; then
+    print_error_msg "Variable 'fastq-input' needs to be set to a valid wildcard path that describes the FASTQ files in a bucket, e.g. gs://some-bucket/*.fastq.gz"
+    input_error=true
+  fi
+  if [[ -n ${undeduplicated_output} && ! "${undeduplicated_output}" =~ ^gs://[-/._a-zA-Z0-9]+.bam$ ]]; then
+    print_error_msg "If undeduplicated-output is set then it needs to be set to a path of the form 'gs://some-kind/of/path.bam'"
+    input_error=true
+  fi
+  if [[ -n ${non_umi_aware_deduplicated_output} && ! "${non_umi_aware_deduplicated_output}" =~ ^gs://[-/._a-zA-Z0-9]+.bam$ ]]; then
+    print_error_msg "If non-umi_aware-deduplicated-output is set then it needs to be set to a path of the form 'gs://some-kind/of/path.bam'"
+    input_error=true
+  fi
+  if [[ -n ${umi_aware_deduplicated_output} && ! "${umi_aware_deduplicated_output}" =~ ^gs://[-/._a-zA-Z0-9]+.bam$ ]]; then
+    print_error_msg "If umi-aware-deduplicated-output is set then it needs to be set to a path of the form 'gs://some-kind/of/path.bam'"
+    input_error=true
+  fi
+  if [[ -n ${undeduplicated_output} && "${undeduplicated_output}" == "${non_umi_aware_deduplicated_output}" ]] \
+    || [[ -n ${undeduplicated_output} && "${undeduplicated_output}" == "${umi_aware_deduplicated_output}" ]] \
+    || [[ -n ${non_umi_aware_deduplicated_output} && "${non_umi_aware_deduplicated_output}" == "${umi_aware_deduplicated_output}" ]]; then
+    print_error_msg "Cannot have multiple output paths set to the same value, since the outputs would overwrite each other."
+    input_error=true
+  fi
+  if [[ ${input_error} == true ]]; then
+    echo ""
+    print_run_usage
+  fi
+
+  # set default if needed
+  if [[ -z ${undeduplicated_output} ]]; then
+    undeduplicated_output=""
+  fi
+  if [[ -z ${non_umi_aware_deduplicated_output} ]]; then
+    non_umi_aware_deduplicated_output=""
+  fi
+  if [[ -z ${umi_aware_deduplicated_output} ]]; then
+    umi_aware_deduplicated_output=""
+  fi
+  if [[ -z ${docker_image} ]]; then
+    docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default Docker image name"
+  fi
 
   # Make sure correct credentials are available
   gcloud container clusters get-credentials rerun-cluster --region europe-west4 --project hmf-crunch \
         || die "Could not find credentials at gcp"
 
+  local clean_pod_name
+  clean_pod_name="$(echo "${pod_name}" | awk '{print tolower($0)}' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+
   sed \
   -e "s/VAR_POD_NAME/${clean_pod_name}/g" \
   -e "s#DOCKER_IMAGE#${docker_image}#g" \
+  -e "s#FASTQ_INPUT#${fastq_input}#g" \
+  -e "s#REF_GENOME#${ref_genome}#g" \
+  -e "s#UNDEDUPLICATED_OUTPUT#${undeduplicated_output}#g" \
+  -e "s#NON_UMI_AWARE_DEDUPLICATED_OUTPUT#${non_umi_aware_deduplicated_output}#g" \
+  -e "s#UMI_AWARE_DEDUPLICATED_OUTPUT#${umi_aware_deduplicated_output}#g" \
   "${REPO_DIR_NAME}/k8/hmf-crunch/deploy.yaml" \
-  | kubectl create -f -  # use # as separator to handle / in docker image name
+  | kubectl create -f -  # use # as separator to handle / properly
 }
 
 version() {
