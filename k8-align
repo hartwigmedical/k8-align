@@ -2,18 +2,23 @@
 
 REPO_DIR_NAME="$(dirname "$0")" || exit 1
 
-function printUsage(){
+print_usage(){
+  echo "USAGE: $0 build --name <image-name>"
   echo "USAGE: $0 run"
+  echo "USAGE: $0 version"
   exit 1
 }
 
-function main() {
+main() {
   if [ $# -lt 1 ]; then  # TODO: bump this back up if there are actual arguments
-   printUsage
+   print_usage
   fi
 
   CMD=$1 && shift
   case $CMD in
+  build)
+     build "$@"
+     ;;
   run)
      run "$@"
      ;;
@@ -21,18 +26,39 @@ function main() {
      version "$@"
      ;;
   *)
-     printUsage
+     print_usage
      ;;
   esac
 }
 
-function run() {
+build() {
+  UNRECOGNIZED=()
+  while [[ $# -gt 0 ]]
+  do
+    key="$1" && shift
+    case $key in
+      -n|--name)
+        name="$1" && shift;;
+      *)
+        UNRECOGNIZED+=("$1");;
+    esac
+  done
+  
+  # sanity checks
+  [[ ${#UNRECOGNIZED[@]} -eq 0 ]] || die "Unrecognized options to ${SCRIPT_NAME}: options=${UNRECOGNIZED[*]}"
+  [[ -n ${name} ]] || die "Variable 'name' has not been set"
+
+  docker build "${REPO_DIR_NAME}" -t "${name}" || die "Failed Docker build"
+}
+
+run() {
   pod_name="$(echo "k8-align-test" | awk '{print tolower($0)}')"
   clean_pod_name="$(echo "${pod_name}" | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
-  docker_image="$(get_default_docker_image_at_k8)" || exit 1
+  docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default docker image name"
 
   # Make sure correct credentials are available
-  gcloud container clusters get-credentials rerun-cluster --region europe-west4 --project hmf-crunch || exit 1
+  gcloud container clusters get-credentials rerun-cluster --region europe-west4 --project hmf-crunch \
+        || die "Could not find credentials at gcp"
 
   sed \
   -e "s/VAR_POD_NAME/${clean_pod_name}/g" \
@@ -41,13 +67,18 @@ function run() {
   | kubectl create -f -  # use # as separator to handle / in docker image name
 }
 
-function version() {
-  default_docker_image="$(get_default_docker_image_at_k8)" || exit 1
+version() {
+  default_docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default docker image name"
   echo "Current default Docker image version at k8: ${default_docker_image}"
 }
 
-function get_default_docker_image_at_k8() {
+get_default_docker_image_at_k8() {
   cat "${REPO_DIR_NAME}/default_docker_image_at_k8.txt"
+}
+
+die() {
+    echo "[ERROR] $1"
+    exit 1
 }
 
 main "$@"
