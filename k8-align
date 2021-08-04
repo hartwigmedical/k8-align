@@ -8,11 +8,26 @@ print_usage(){
   echo "USAGE: $0 build --name <image-name>"
   echo "USAGE: $0 push --name <image-name>"
   echo "USAGE: $0 version"
+  echo "  <image-name> Name of the Docker image"
+  exit 1
+}
+
+print_build_usage(){
+  echo "Build new Docker image"
+  echo "USAGE: $0 build --name <image-name>"
+  echo "  [-n/--name] Name of the Docker image (Required)"
+  exit 1
+}
+
+print_push_usage(){
+  echo "Push Docker image to GCP. If name-version combination exists, please rebuilt and push with new name."
+  echo "USAGE: $0 push --name <image-name>"
+  echo "  [-n/--name] Name of the Docker image (Required)"
   exit 1
 }
 
 main() {
-  if [ $# -lt 1 ]; then  # TODO: bump this back up if there are actual arguments
+  if [ $# -lt 1 ]; then
    print_usage
   fi
 
@@ -51,8 +66,18 @@ build() {
   done
   
   # sanity checks
-  [[ ${#UNRECOGNIZED[@]} -eq 0 ]] || die_usage "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
-  [[ -n ${name} ]] || die_usage "Variable 'name' has not been set"
+  local input_error=false
+  if [[ ! ${#UNRECOGNIZED[@]} -eq 0 ]]; then
+    print_error_msg "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+    input_error=true
+  fi
+  if [[ -z ${name} ]]; then
+    print_error_msg "Variable 'name' has not been set"
+    input_error=true
+  fi
+  if [[ ${input_error} == true ]]; then
+    print_build_usage
+  fi
 
   docker build "${REPO_DIR_NAME}" -t "${name}" || die "Failed Docker build"
 
@@ -76,8 +101,18 @@ push() {
   done
 
   # sanity checks
-  [[ ${#UNRECOGNIZED[@]} -eq 0 ]] || die_usage "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
-  [[ -n ${name} ]] || die_usage "Variable 'name' has not been set"
+  local input_error=false
+  if [[ ! ${#UNRECOGNIZED[@]} -eq 0 ]]; then
+    print_error_msg "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+    input_error=true
+  fi
+  if [[ -z ${name} ]]; then
+    print_error_msg "Variable 'name' has not been set"
+    input_error=true
+  fi
+  if [[ ${input_error} == true ]]; then
+    print_push_usage
+  fi
 
   echo "Checking whether image with name '${name}' already exists at GCP"
   already_pushed=$(image_has_already_been_pushed "${name}")
@@ -127,14 +162,12 @@ image_has_already_been_pushed() {
 }
 
 die() {
-  echo "[ERROR] $1"
+  print_error_msg "$1"
   exit 1
 }
 
-die_usage() {
+print_error_msg() {
   echo "[ERROR] $1"
-  print_usage
-  exit 1
 }
 
 main "$@"
