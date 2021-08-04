@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: VAR_POD_NAME
-          image: eu.gcr.io/hmf-build/k8-align:0.1
+          image: DEPLOYED_DOCKER_IMAGE
           imagePullPolicy: Always
           args: []
       imagePullSecrets:

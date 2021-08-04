@@ -1,8 +1,27 @@
 #!/usr/bin/env bash
 
+DEPLOYED_DOCKER_IMAGE="eu.gcr.io/hmf-build/k8-align:0.1"
+
 function printUsage(){
     echo "USAGE: $0 run"
     exit 1
+}
+
+function main() {
+    if [ $# -lt 1 ]; then  # TODO: bump this back up if there are actual arguments
+     printUsage
+    fi
+
+    CMD=$1 && shift
+
+    case $CMD in
+    run)
+       run "$@"
+       ;;
+    *)
+       printUsage
+       ;;
+    esac
 }
 
 function run() {
@@ -14,21 +33,9 @@ function run() {
 
     sed \
     -e "s/VAR_POD_NAME/${clean_pod_name}/g" \
+    -e "s#DEPLOYED_DOCKER_IMAGE#${DEPLOYED_DOCKER_IMAGE}#g" \
     k8/hmf-crunch/deploy.yaml \
-    | kubectl create -f -
+    | kubectl create -f -  # use # as separator to handle / in docker image name
 }
 
-if [ $# -lt 1 ]; then  # TODO: bump this back up if there are actual arguments
-  printUsage
-fi
-
-CMD=$1 && shift
-
-case $CMD in
-run)
-    run "$@"
-    ;;
-*)
-    printUsage
-    ;;
-esac
+main "$@"
