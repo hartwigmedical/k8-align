@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: VAR_POD_NAME
-          image: DEPLOYED_DOCKER_IMAGE
+          image: DOCKER_IMAGE
           imagePullPolicy: Always
           args: []
       imagePullSecrets:
