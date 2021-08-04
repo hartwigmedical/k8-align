@@ -4,8 +4,9 @@ REPO_DIR_NAME="$(dirname "$0")" || exit 1
 SCRIPT_NAME="$(basename "$0")" || exit 1
 
 print_usage(){
-  echo "USAGE: $0 build --name <image-name>"
   echo "USAGE: $0 run"
+  echo "USAGE: $0 build --name <image-name>"
+  echo "USAGE: $0 push --name <image-name>"
   echo "USAGE: $0 version"
   exit 1
 }
@@ -15,10 +16,13 @@ main() {
    print_usage
   fi
 
-  CMD=$1 && shift
+  local CMD=$1 && shift
   case $CMD in
   build)
      build "$@"
+     ;;
+  push)
+     push "$@"
      ;;
   run)
      run "$@"
@@ -33,7 +37,8 @@ main() {
 }
 
 build() {
-  UNRECOGNIZED=()
+  local UNRECOGNIZED=()
+  local key
   while [[ $# -gt 0 ]]
   do
     key="$1" && shift
@@ -50,11 +55,48 @@ build() {
   [[ -n ${name} ]] || die_usage "Variable 'name' has not been set"
 
   docker build "${REPO_DIR_NAME}" -t "${name}" || die "Failed Docker build"
+
+  echo "The build has succeeded."
+  echo "If you want to push this image to GCP, run the following command:"
+  echo "$0 push --name ${name}"
+}
+
+push() {
+  local UNRECOGNIZED=()
+  local key
+  while [[ $# -gt 0 ]]
+  do
+    key="$1" && shift
+    case $key in
+      -n|--name)
+        name="$1" && shift;;
+      *)
+        UNRECOGNIZED+=("${key}");;
+    esac
+  done
+
+  # sanity checks
+  [[ ${#UNRECOGNIZED[@]} -eq 0 ]] || die_usage "Unrecognized options to ${SCRIPT_NAME}: options=(${UNRECOGNIZED[*]})"
+  [[ -n ${name} ]] || die_usage "Variable 'name' has not been set"
+
+  echo "Checking whether image with name '${name}' already exists at GCP"
+  already_pushed=$(image_has_already_been_pushed "${name}")
+
+  if [[ ${already_pushed} ]]; then
+    die "Image with ${name} has already been pushed to GCP. Please rebuild with a newer version of the image name.'"
+  else
+    echo "Pushing new image ${name} to GCP"
+    docker push "${name}" || die "Failed Docker push"
+    echo "Pushed new image ${name} to GCP"
+  fi
 }
 
 run() {
+  local pod_name
   pod_name="$(echo "k8-align-test" | awk '{print tolower($0)}')"
+  local clean_pod_name
   clean_pod_name="$(echo "${pod_name}" | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+  local docker_image
   docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default docker image name"
 
   # Make sure correct credentials are available
@@ -69,6 +111,7 @@ run() {
 }
 
 version() {
+  local default_docker_image
   default_docker_image="$(get_default_docker_image_at_k8)" || die "Could not find default docker image name"
   echo "Current default Docker image version at k8: ${default_docker_image}"
 }
@@ -77,15 +120,21 @@ get_default_docker_image_at_k8() {
   cat "${REPO_DIR_NAME}/default_docker_image_at_k8.txt"
 }
 
+image_has_already_been_pushed() {
+  local name=$1 && shift
+  [[ -n ${name} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
+  docker manifest inspect "${name}" > /dev/null 2>&1
+}
+
 die() {
-    echo "[ERROR] $1"
-    exit 1
+  echo "[ERROR] $1"
+  exit 1
 }
 
 die_usage() {
-    echo "[ERROR] $1"
-    print_usage
-    exit 1
+  echo "[ERROR] $1"
+  print_usage
+  exit 1
 }
 
 main "$@"
