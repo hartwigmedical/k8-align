@@ -1,44 +1,183 @@
 #!/usr/bin/env bash
 
-THREADS=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
+THREAD_COUNT=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
 SCRIPT_NAME=$(basename "$0")
 
+GSUTIL="gsutil"
+BWA="bwa"
+SAMBAMBA="sambamba"
+UMI_COLLAPSE="UMICollapse/umicollapse"
+
+LOCAL_FASTQ_DIR="./fastq"
+LOCAL_LANE_BAM_DIR="./lane_bams"
+LOCAL_REF_GENOME_DIR="./ref_genome"
+LOCAL_UNDEDUPLICATED_BAM_PATH="./undeduplicated.bam"
+LOCAL_SAMBAMBA_BAM_PATH="./sambamba_markdup.bam"
+LOCAL_UMI_COLLAPSE_BAM_PATH="./umi_collapse_dedup.bam"
+
+37_REF_GENOME_BUCKET_PATH="gs://common-resources/reference_genome/37/"
+37_REF_GENOME_FASTA_FILE="Homo_sapiens.GRCh37.GATK.illumina.fasta"
+38_REF_GENOME_BUCKET_PATH="gs://common-resources/reference_genome/38/"
+38_REF_GENOME_FASTA_FILE="GCA_000001405.15_GRCh38_no_alt_analysis_set.fna"
+
+SAMBAMBA_OVERFLOW_LIST_SIZE=45000000
 
 main() {
-    info "Starting with ${SCRIPT_NAME}"
+  info "Starting with ${SCRIPT_NAME}"
 
-    info "Hello world!"
+  fastq_input=$1 && shift
+  ref_genome_version=$1 && shift
+  undeduplicated_bam_output=$1 && shift
+  sambamba_deduplicated_bam_output=$1 && shift
+  umi_collapse_deduplicated_bam_output=$1 && shift
 
-    info "Finished with ${SCRIPT_NAME}"
+  # sanity checks
+  tool_exists_or_die "${GSUTIL}"
+  file_exists_or_die "${BWA}"
+  file_exists_or_die "${SAMBAMBA}"
+  file_exists_or_die "${UMI_COLLAPSE}"
+  [[ $# -eq 0 ]] || die "More arguments provided than can be used"
+
+  info "Passed sanity checks"
+
+  mkdir -p "${LOCAL_FASTQ_DIR}"
+  mkdir -p "${LOCAL_LANE_BAM_DIR}"
+  mkdir -p "${LOCAL_REF_GENOME_DIR}"
+
+  info "Start downloading reference genome ${ref_genome_version}"
+  if [[ "${ref_genome_version}" == "37" ]]; then
+    "${GSUTIL}" -mq rsync "${37_REF_GENOME_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 37 ref genome failed"
+    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${37_REF_GENOME_FASTA_FILE}"
+  elif [[ "${ref_genome_version}" == "38" ]]; then
+    "${GSUTIL}" -mq rsync "${38_REF_GENOME_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 38 ref genome failed"
+    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${38_REF_GENOME_FASTA_FILE}"
+  else
+    die "Unrecognized reference genome version: ${ref_genome_version}"
+  fi
+  info "Finished downloading reference genome ${ref_genome_version}"
+
+  info "Start downloading FASTQ input files"
+  "${GSUTIL}" -mq cp "${fastq_input}" "${LOCAL_FASTQ_DIR}" || die "Downloading FASTQ files failed"
+  info "Finished downloading FASTQ input files"
+
+  r1_fastqs=$(ls "${LOCAL_FASTQ_DIR}/*_R1_*")
+  r2_fastqs=$(ls "${LOCAL_FASTQ_DIR}/*_R2_*")
+
+  # check FASTQ files exist in pairs
+  [[ ${#r1_fastqs[@]} -eq ${#r2_fastqs[@]} ]] || die "Number of R1 and R2 FASTQ files differs."
+  for r1_fastq in ${r1_fastqs}; do
+    [[ $(count_substring "_R1_" "${r1_fastq}") -eq 1 ]] || die "An R1 FASTQ file name contains the '_R1_' substring more than once: ${r1_fastq}"
+    in_array "${r1_fastq//_R1_/_R2_}" "${r2_fastqs[@]}" || die "An R1 FASTQ file has no matching R2 file: ${r1_fastq}"
+  done
+  for r2_fastq in ${r2_fastqs}; do
+    [[ $(count_substring "_R2_" "${r2_fastq}") -eq 1 ]] || die "An R2 FASTQ file name contains the '_R2_' substring more than once: ${r2_fastq}"
+    in_array "${r2_fastq//_R2_/_R1_}" "${r1_fastqs[@]}" || die "An R2 FASTQ file has no matching R1 file: ${r2_fastq}"
+  done
+
+  info "Start creating lane bams"
+  declare -a lane_bams  # declare empty
+  for r1_fastq in ${r1_fastqs}; do
+    r2_fastq="${r1_fastq//_R1_/_R2_}"
+    lane_bam="${r1_fastq}.bam"
+    info "Start creating lane bams ${lane_bam}"
+    "${BWA}" mem -Y -t "${THREAD_COUNT}" "${local_ref_genome}" "${r1_fastq}" "${r2_fastq}" | \
+          "${SAMBAMBA}" view -f "bam" -S -l0 | \
+          "${SAMBAMBA}" sort -o "${lane_bam}" || die "Failed creating lane bam ${lane_bam}"
+    lane_bams+=("${lane_bam}")
+    info "Finished creating lane bams ${lane_bam}"
+  done
+  info "Finished creating lane bams"
+
+  info "Start merging lane bams"
+  "${SAMBAMBA}" merge "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${lane_bams[@]}" || die "Failed to merge lane bams"
+  info "Finished merging lane bams"
+
+  if [[ -n ${undeduplicated_bam_output} ]]; then
+    info "Start uploading undeduplicated bam to ${undeduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${undeduplicated_bam_output}"
+    info "Finished uploading undeduplicated bam to ${undeduplicated_bam_output}"
+  else
+    info "Do not need to upload undeduplicated bam to output bucket"
+  fi
+
+  if [[ -n ${sambamba_deduplicated_bam_output} ]]; then
+    info "Start non-UMI-aware deduplication"
+    "${SAMBAMBA}" markdup -t "${THREAD_COUNT}" --overflow-list-size="${SAMBAMBA_OVERFLOW_LIST_SIZE}" \
+        "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${LOCAL_SAMBAMBA_BAM_PATH}"\
+        || die "Could not run sambamba markdup"
+    info "Finished non-UMI-aware deduplication"
+
+    info "Start uploading non-UMI-aware-deduplicated bam to ${sambamba_deduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_SAMBAMBA_BAM_PATH}" "${sambamba_deduplicated_bam_output}"
+    info "Finished uploading non-UMI-aware-deduplicated bam to ${sambamba_deduplicated_bam_output}"
+  else
+    info "Do not need to do non-UMI-aware deduplication"
+  fi
+
+  if [[ -n ${umi_collapse_deduplicated_bam_output} ]]; then
+    info "Start UMI-aware deduplication"
+    "${UMI_COLLAPSE}" bam -i "${LOCAL_UNDEDUPLICATED_BAM_PATH}" -o "${LOCAL_UMI_COLLAPSE_BAM_PATH}"\
+        --umi-sep ":" --paired --two-pass\
+        || die "Could not run UMI-Collapse"
+    info "Finished UMI-aware deduplication"
+
+    info "Start uploading UMI-aware-deduplicated bam to ${umi_collapse_deduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_UMI_COLLAPSE_BAM_PATH}" "${umi_collapse_deduplicated_bam_output}"
+    info "Finished uploading UMI-aware-deduplicated bam to ${umi_collapse_deduplicated_bam_output}"
+  else
+    info "Do not need to do UMI-aware deduplication"
+  fi
+
+  info "Finished with ${SCRIPT_NAME}"
+}
+
+count_substring() {
+  local substring=$1 && shift
+  local total=$1 && shift
+  [[ -n ${total} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
+  without_substring="${total//"${substring}"}"
+  echo $(((${#total} - ${#without_substring}) / ${#substring}))
+}
+
+in_array(){
+  local item=$1 && shift
+  local array=$1 && shift
+  [[ -n ${array} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
+  for e in "${array[@]}"; do
+    [[ "${e}" == "${item}" ]] && return 0
+  done
+  return 1
 }
 
 tool_exists_or_die() {
-    local tool=$1 && shift
-    command -v "${tool}" >/dev/null 2>&1 || die "Tool '${tool}' not found"
+  local tool=$1 && shift
+  [[ -n ${tool} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
+  command -v "${tool}" >/dev/null 2>&1 || die "Tool '${tool}' not found"
 }
 
 file_exists_or_die() {
-    local file=$1 && shift
-    [[ -f "${file}" ]] || die "File '${file}' not found"
+  local file=$1 && shift
+  [[ -n ${file} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
+  [[ -f "${file}" ]] || die "File '${file}' not found"
 }
 
 msg() {
-    local msg_type=$1 && shift
-    local msg_content=$* && shift
-    echo "[${msg_type}] $(date +'%y%m%d %T') - ${msg_content}"
+  local msg_type=$1 && shift
+  local msg_content=$* && shift
+  echo "[${msg_type}] $(date +'%y%m%d %T') - ${msg_content}"
 }
 
 die() {
-    msg "ERROR" "$@" >&2
-    exit 1
+  msg "ERROR" "$@" >&2
+  exit 1
 }
 
 warn() {
-    msg "WARN" "$@" >&2
+  msg "WARN" "$@" >&2
 }
 
 info() {
-    msg "INFO" "$@"
+  msg "INFO" "$@"
 }
 
-main
+main "$@"
