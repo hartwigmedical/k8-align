@@ -63,24 +63,24 @@ main() {
   "${GSUTIL}" -mq cp "${fastq_input}" "${LOCAL_FASTQ_DIR}" || die "Downloading FASTQ files failed"
   info "Finished downloading FASTQ input files"
 
-  r1_fastqs=$(ls ${LOCAL_FASTQ_DIR}/*_R1_*)
-  r2_fastqs=$(ls ${LOCAL_FASTQ_DIR}/*_R2_*)
+  r1_fastq_count=$(find "${LOCAL_FASTQ_DIR}" -name "*_R1_*" -maxdepth 1 -mindepth 1 | wc -l)
+  r2_fastq_count=$(find "${LOCAL_FASTQ_DIR}" -name "*_R2_*" -maxdepth 1 -mindepth 1 | wc -l)
 
   # check FASTQ files exist in pairs
-  [[ ${#r1_fastqs[@]} -eq ${#r2_fastqs[@]} ]] || die "Number of R1 and R2 FASTQ files differs."
-  [[ ! ${#r1_fastqs[@]} -eq 0 ]] || die "There are no FASTQ files to align."
-  for r1_fastq in "${r1_fastqs[@]}"; do
+  [[ ${r1_fastq_count} -eq ${r2_fastq_count} ]] || die "Number of R1 and R2 FASTQ files differs."
+  [[ ! ${r1_fastq_count} -eq 0 ]] || die "There are no FASTQ files to align."
+  for r1_fastq in "${LOCAL_FASTQ_DIR}"/*_R1_*; do
     [[ $(count_substring "_R1_" "${r1_fastq}") -eq 1 ]] || die "An R1 FASTQ file name contains the '_R1_' substring more than once: ${r1_fastq}"
-    in_array "${r1_fastq//_R1_/_R2_}" "${r2_fastqs[@]}" || die "An R1 FASTQ file has no matching R2 file: ${r1_fastq}"
+    [[ -f "${r1_fastq//_R1_/_R2_}" ]] || die "An R1 FASTQ file has no matching R2 file: ${r1_fastq}"
   done
-  for r2_fastq in "${r2_fastqs[@]}"; do
+  for r2_fastq in "${LOCAL_FASTQ_DIR}"/*_R2_*; do
     [[ $(count_substring "_R2_" "${r2_fastq}") -eq 1 ]] || die "An R2 FASTQ file name contains the '_R2_' substring more than once: ${r2_fastq}"
-    in_array "${r2_fastq//_R2_/_R1_}" "${r1_fastqs[@]}" || die "An R2 FASTQ file has no matching R1 file: ${r2_fastq}"
+    [[ -f "${r2_fastq//_R2_/_R1_}" ]] || die "An R2 FASTQ file has no matching R1 file: ${r2_fastq}"
   done
 
   info "Start creating lane bams"
   declare -a lane_bams  # declare empty
-  for r1_fastq in "${r1_fastqs[@]}"; do
+  for r1_fastq in "${LOCAL_FASTQ_DIR}"/*_R1_*; do
     r2_fastq="${r1_fastq//_R1_/_R2_}"
     lane_bam="${r1_fastq//${LOCAL_FASTQ_DIR}/${LOCAL_LANE_BAM_DIR}}.bam"
     info "Start creating lane bam ${lane_bam}"
@@ -155,16 +155,6 @@ count_substring() {
   [[ -n ${total} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
   without_substring="${total//"${substring}"}"
   echo $(((${#total} - ${#without_substring}) / ${#substring}))
-}
-
-in_array(){
-  local item=$1 && shift
-  local array=$1 && shift
-  [[ -n ${array} ]] || die "Not enough arguments to ${FUNCNAME[0]}"
-  for e in "${array[@]}"; do
-    [[ "${e}" == "${item}" ]] && return 0
-  done
-  return 1
 }
 
 tool_exists_or_die() {
