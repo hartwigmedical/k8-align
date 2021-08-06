@@ -79,19 +79,24 @@ main() {
   declare -a lane_bams  # declare empty
   for r1_fastq in "${r1_fastqs[@]}"; do
     r2_fastq="${r1_fastq//_R1_/_R2_}"
-    lane_bam="${r1_fastq}.bam"
-    info "Start creating lane bams ${lane_bam}"
+    lane_bam="${r1_fastq//${LOCAL_FASTQ_DIR}/${LOCAL_LANE_BAM_DIR}}.bam"
+    info "Start creating lane bam ${lane_bam}"
     "${BWA}" mem -Y -t "${THREAD_COUNT}" "${local_ref_genome}" "${r1_fastq}" "${r2_fastq}" | \
           "${SAMBAMBA}" view -f "bam" -S -l 0 "/dev/stdin" | \
           "${SAMBAMBA}" sort -o "${lane_bam}" "/dev/stdin" || die "Failed creating lane bam ${lane_bam}"
     lane_bams+=("${lane_bam}")
-    info "Finished creating lane bams ${lane_bam}"
+    info "Finished creating lane bam ${lane_bam}"
   done
-  info "Finished creating lane bams"
+  info "Finished creating lane bams: " "${lane_bams[@]}"
 
-  info "Start merging lane bams"
-  "${SAMBAMBA}" merge "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${lane_bams[@]}" || die "Failed to merge lane bams"
-  info "Finished merging lane bams"
+  if [[ ${#lane_bams[@]} -gt 1 ]]; then
+    info "Start merging lane bams into one bam: ${LOCAL_UNDEDUPLICATED_BAM_PATH}"
+    "${SAMBAMBA}" merge -t "${THREAD_COUNT}" "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${lane_bams[@]}" || die "Failed to merge lane bams"
+    info "Finished merging lane bams"
+  else
+    info "Only one lane bam, so it is also the merged bam"
+    cp "${lane_bams[0]}" "${LOCAL_UNDEDUPLICATED_BAM_PATH}" || die "Failed to copy lane bam to merged bam path"
+  fi
 
   if [[ -n ${undeduplicated_bam_output} ]]; then
     info "Start uploading undeduplicated bam to ${undeduplicated_bam_output}"
