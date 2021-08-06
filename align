@@ -82,8 +82,8 @@ main() {
     lane_bam="${r1_fastq}.bam"
     info "Start creating lane bams ${lane_bam}"
     "${BWA}" mem -Y -t "${THREAD_COUNT}" "${local_ref_genome}" "${r1_fastq}" "${r2_fastq}" | \
-          "${SAMBAMBA}" view -f "bam" -S -l 0 | \
-          "${SAMBAMBA}" sort -o "${lane_bam}" || die "Failed creating lane bam ${lane_bam}"
+          "${SAMBAMBA}" view -f "bam" -S -l 0 "/dev/stdin" | \
+          "${SAMBAMBA}" sort -o "${lane_bam}" "/dev/stdin" || die "Failed creating lane bam ${lane_bam}"
     lane_bams+=("${lane_bam}")
     info "Finished creating lane bams ${lane_bam}"
   done
@@ -104,7 +104,7 @@ main() {
   if [[ -n ${sambamba_deduplicated_bam_output} ]]; then
     info "Start non-UMI-aware deduplication"
     "${SAMBAMBA}" markdup -t "${THREAD_COUNT}" --overflow-list-size="${SAMBAMBA_OVERFLOW_LIST_SIZE}" \
-        "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${LOCAL_SAMBAMBA_BAM_PATH}"\
+        "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${LOCAL_SAMBAMBA_BAM_PATH}" \
         || die "Could not run sambamba markdup"
     info "Finished non-UMI-aware deduplication"
 
@@ -117,8 +117,8 @@ main() {
 
   if [[ -n ${umi_collapse_deduplicated_bam_output} ]]; then
     info "Start UMI-aware deduplication"
-    "${UMI_COLLAPSE}" bam -i "${LOCAL_UNDEDUPLICATED_BAM_PATH}" -o "${LOCAL_UMI_COLLAPSE_BAM_PATH}"\
-        --umi-sep ":" --paired --two-pass\
+    "${UMI_COLLAPSE}" bam -i "${LOCAL_UNDEDUPLICATED_BAM_PATH}" -o "${LOCAL_UMI_COLLAPSE_BAM_PATH}" \
+        --umi-sep ":" --paired --two-pass \
         || die "Could not run UMI-Collapse"
     info "Finished UMI-aware deduplication"
 
