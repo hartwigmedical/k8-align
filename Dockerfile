@@ -1,10 +1,11 @@
 FROM google/cloud-sdk:317.0.0
 
 # add repo tools
-RUN apt-get update
-RUN apt-get --yes install \
+RUN apt-get update && \
+    apt-get --yes install \
     wget=1.20.1-1.1 \
-    zlib1g-dev=1:1.2.11.dfsg-1
+    zlib1g-dev=1:1.2.11.dfsg-1 \
+    openjdk-11-jre-headless=11.0.12+7-2~deb10u1
 
 # add non-repo tools
 RUN wget -qO- https://github.com/lh3/bwa/releases/download/v0.7.17/bwa-0.7.17.tar.bz2 | tar xjf - \

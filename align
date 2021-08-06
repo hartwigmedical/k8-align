@@ -4,16 +4,18 @@ THREAD_COUNT=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
 SCRIPT_NAME=$(basename "$0")
 
 GSUTIL="gsutil"
-BWA="./bwa"
-SAMBAMBA="./sambamba"
-UMI_COLLAPSE="./UMICollapse/umicollapse"
+JAVA="java"
+BWA="$HOME/bwa"
+SAMBAMBA="$HOME/sambamba"
+UMI_COLLAPSE_DIR="$HOME/UMICollapse"
+UMI_COLLAPSE="${UMI_COLLAPSE_DIR}/umicollapse"
 
-LOCAL_FASTQ_DIR="./fastq"
-LOCAL_LANE_BAM_DIR="./lane_bams"
-LOCAL_REF_GENOME_DIR="./ref_genome"
-LOCAL_UNDEDUPLICATED_BAM_PATH="./undeduplicated.bam"
-LOCAL_SAMBAMBA_BAM_PATH="./sambamba_markdup.bam"
-LOCAL_UMI_COLLAPSE_BAM_PATH="./umi_collapse_dedup.bam"
+LOCAL_FASTQ_DIR="$HOME/fastq"
+LOCAL_LANE_BAM_DIR="$HOME/lane_bams"
+LOCAL_REF_GENOME_DIR="$HOME/ref_genome"
+LOCAL_UNDEDUPLICATED_BAM_PATH="$HOME/undeduplicated.bam"
+LOCAL_SAMBAMBA_BAM_PATH="$HOME/sambamba_markdup.bam"
+LOCAL_UMI_COLLAPSE_BAM_PATH="$HOME/umi_collapse_dedup.bam"
 
 REF_GENOME_37_BUCKET_PATH="gs://common-resources/reference_genome/37/"
 REF_GENOME_37_FASTA_FILE="Homo_sapiens.GRCh37.GATK.illumina.fasta"
@@ -33,6 +35,7 @@ main() {
 
   # sanity checks
   tool_exists_or_die "${GSUTIL}"
+  tool_exists_or_die "${JAVA}"
   file_exists_or_die "${BWA}"
   file_exists_or_die "${SAMBAMBA}"
   file_exists_or_die "${UMI_COLLAPSE}"
@@ -122,9 +125,11 @@ main() {
 
   if [[ -n ${umi_collapse_deduplicated_bam_output} ]]; then
     info "Start UMI-aware deduplication"
+    pushd "${UMI_COLLAPSE_DIR}" || die "Could not cd into UMI-Collapse dir"
     "${UMI_COLLAPSE}" bam -i "${LOCAL_UNDEDUPLICATED_BAM_PATH}" -o "${LOCAL_UMI_COLLAPSE_BAM_PATH}" \
         --umi-sep ":" --paired --two-pass \
         || die "Could not run UMI-Collapse"
+    popd || die "Could not cd out of UMI-Collapse dir"
     info "Finished UMI-aware deduplication"
 
     info "Start uploading UMI-aware-deduplicated bam to ${umi_collapse_deduplicated_bam_output}"
