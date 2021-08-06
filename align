@@ -101,9 +101,12 @@ main() {
     cp "${lane_bams[0]}" "${LOCAL_UNDEDUPLICATED_BAM_PATH}" || die "Failed to copy lane bam to merged bam path"
   fi
 
+  "${SAMBAMBA}" index -t "${THREAD_COUNT}" "${LOCAL_UNDEDUPLICATED_BAM_PATH}"
+
   if [[ -n ${undeduplicated_bam_output} ]]; then
     info "Start uploading undeduplicated bam to ${undeduplicated_bam_output}"
     gsutil -m cp "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${undeduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_UNDEDUPLICATED_BAM_PATH}.bai" "${undeduplicated_bam_output}.bai"
     info "Finished uploading undeduplicated bam to ${undeduplicated_bam_output}"
   else
     info "Do not need to upload undeduplicated bam to output bucket"
@@ -114,10 +117,12 @@ main() {
     "${SAMBAMBA}" markdup -t "${THREAD_COUNT}" --overflow-list-size="${SAMBAMBA_OVERFLOW_LIST_SIZE}" \
         "${LOCAL_UNDEDUPLICATED_BAM_PATH}" "${LOCAL_SAMBAMBA_BAM_PATH}" \
         || die "Could not run sambamba markdup"
+    "${SAMBAMBA}" index -t "${THREAD_COUNT}" "${LOCAL_SAMBAMBA_BAM_PATH}"
     info "Finished non-UMI-aware deduplication"
 
     info "Start uploading non-UMI-aware-deduplicated bam to ${sambamba_deduplicated_bam_output}"
     gsutil -m cp "${LOCAL_SAMBAMBA_BAM_PATH}" "${sambamba_deduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_SAMBAMBA_BAM_PATH}.bai" "${sambamba_deduplicated_bam_output}.bai"
     info "Finished uploading non-UMI-aware-deduplicated bam to ${sambamba_deduplicated_bam_output}"
   else
     info "Do not need to do non-UMI-aware deduplication"
@@ -130,10 +135,12 @@ main() {
         --umi-sep ":" --paired --two-pass \
         || die "Could not run UMI-Collapse"
     popd || die "Could not cd out of UMI-Collapse dir"
+    "${SAMBAMBA}" index -t "${THREAD_COUNT}" "${LOCAL_UMI_COLLAPSE_BAM_PATH}"
     info "Finished UMI-aware deduplication"
 
     info "Start uploading UMI-aware-deduplicated bam to ${umi_collapse_deduplicated_bam_output}"
     gsutil -m cp "${LOCAL_UMI_COLLAPSE_BAM_PATH}" "${umi_collapse_deduplicated_bam_output}"
+    gsutil -m cp "${LOCAL_UMI_COLLAPSE_BAM_PATH}.bai" "${umi_collapse_deduplicated_bam_output}.bai"
     info "Finished uploading UMI-aware-deduplicated bam to ${umi_collapse_deduplicated_bam_output}"
   else
     info "Do not need to do UMI-aware deduplication"

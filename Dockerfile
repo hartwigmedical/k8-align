@@ -1,5 +1,7 @@
 FROM google/cloud-sdk:317.0.0
 
+WORKDIR /root/
+
 # add repo tools
 RUN apt-get update && \
     apt-get --yes install \
