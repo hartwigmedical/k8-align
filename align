@@ -4,9 +4,9 @@ THREAD_COUNT=$(($(grep -c processor /proc/cpuinfo) * 8 / 10 ))
 SCRIPT_NAME=$(basename "$0")
 
 GSUTIL="gsutil"
-BWA="bwa"
-SAMBAMBA="sambamba"
-UMI_COLLAPSE="UMICollapse/umicollapse"
+BWA="./bwa"
+SAMBAMBA="./sambamba"
+UMI_COLLAPSE="./UMICollapse/umicollapse"
 
 LOCAL_FASTQ_DIR="./fastq"
 LOCAL_LANE_BAM_DIR="./lane_bams"
@@ -15,10 +15,10 @@ LOCAL_UNDEDUPLICATED_BAM_PATH="./undeduplicated.bam"
 LOCAL_SAMBAMBA_BAM_PATH="./sambamba_markdup.bam"
 LOCAL_UMI_COLLAPSE_BAM_PATH="./umi_collapse_dedup.bam"
 
-37_REF_GENOME_BUCKET_PATH="gs://common-resources/reference_genome/37/"
-37_REF_GENOME_FASTA_FILE="Homo_sapiens.GRCh37.GATK.illumina.fasta"
-38_REF_GENOME_BUCKET_PATH="gs://common-resources/reference_genome/38/"
-38_REF_GENOME_FASTA_FILE="GCA_000001405.15_GRCh38_no_alt_analysis_set.fna"
+REF_GENOME_37_BUCKET_PATH="gs://common-resources/reference_genome/37/"
+REF_GENOME_37_FASTA_FILE="Homo_sapiens.GRCh37.GATK.illumina.fasta"
+REF_GENOME_38_BUCKET_PATH="gs://common-resources/reference_genome/38/"
+REF_GENOME_38_FASTA_FILE="GCA_000001405.15_GRCh38_no_alt_analysis_set.fna"
 
 SAMBAMBA_OVERFLOW_LIST_SIZE=45000000
 
@@ -46,11 +46,11 @@ main() {
 
   info "Start downloading reference genome ${ref_genome_version}"
   if [[ "${ref_genome_version}" == "37" ]]; then
-    "${GSUTIL}" -mq rsync "${37_REF_GENOME_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 37 ref genome failed"
-    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${37_REF_GENOME_FASTA_FILE}"
+    "${GSUTIL}" -mq rsync "${REF_GENOME_37_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 37 ref genome failed"
+    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${REF_GENOME_37_FASTA_FILE}"
   elif [[ "${ref_genome_version}" == "38" ]]; then
-    "${GSUTIL}" -mq rsync "${38_REF_GENOME_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 38 ref genome failed"
-    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${38_REF_GENOME_FASTA_FILE}"
+    "${GSUTIL}" -mq rsync "${REF_GENOME_38_BUCKET_PATH}" "${LOCAL_REF_GENOME_DIR}" || die "Downloading 38 ref genome failed"
+    local_ref_genome="${LOCAL_REF_GENOME_DIR}/${REF_GENOME_38_FASTA_FILE}"
   else
     die "Unrecognized reference genome version: ${ref_genome_version}"
   fi
@@ -60,28 +60,29 @@ main() {
   "${GSUTIL}" -mq cp "${fastq_input}" "${LOCAL_FASTQ_DIR}" || die "Downloading FASTQ files failed"
   info "Finished downloading FASTQ input files"
 
-  r1_fastqs=$(ls "${LOCAL_FASTQ_DIR}/*_R1_*")
-  r2_fastqs=$(ls "${LOCAL_FASTQ_DIR}/*_R2_*")
+  r1_fastqs=$(ls ${LOCAL_FASTQ_DIR}/*_R1_*)
+  r2_fastqs=$(ls ${LOCAL_FASTQ_DIR}/*_R2_*)
 
   # check FASTQ files exist in pairs
   [[ ${#r1_fastqs[@]} -eq ${#r2_fastqs[@]} ]] || die "Number of R1 and R2 FASTQ files differs."
-  for r1_fastq in ${r1_fastqs}; do
+  [[ ! ${#r1_fastqs[@]} -eq 0 ]] || die "There are no FASTQ files to align."
+  for r1_fastq in "${r1_fastqs[@]}"; do
     [[ $(count_substring "_R1_" "${r1_fastq}") -eq 1 ]] || die "An R1 FASTQ file name contains the '_R1_' substring more than once: ${r1_fastq}"
     in_array "${r1_fastq//_R1_/_R2_}" "${r2_fastqs[@]}" || die "An R1 FASTQ file has no matching R2 file: ${r1_fastq}"
   done
-  for r2_fastq in ${r2_fastqs}; do
+  for r2_fastq in "${r2_fastqs[@]}"; do
     [[ $(count_substring "_R2_" "${r2_fastq}") -eq 1 ]] || die "An R2 FASTQ file name contains the '_R2_' substring more than once: ${r2_fastq}"
     in_array "${r2_fastq//_R2_/_R1_}" "${r1_fastqs[@]}" || die "An R2 FASTQ file has no matching R1 file: ${r2_fastq}"
   done
 
   info "Start creating lane bams"
   declare -a lane_bams  # declare empty
-  for r1_fastq in ${r1_fastqs}; do
+  for r1_fastq in "${r1_fastqs[@]}"; do
     r2_fastq="${r1_fastq//_R1_/_R2_}"
     lane_bam="${r1_fastq}.bam"
     info "Start creating lane bams ${lane_bam}"
     "${BWA}" mem -Y -t "${THREAD_COUNT}" "${local_ref_genome}" "${r1_fastq}" "${r2_fastq}" | \
-          "${SAMBAMBA}" view -f "bam" -S -l0 | \
+          "${SAMBAMBA}" view -f "bam" -S -l 0 | \
           "${SAMBAMBA}" sort -o "${lane_bam}" || die "Failed creating lane bam ${lane_bam}"
     lane_bams+=("${lane_bam}")
     info "Finished creating lane bams ${lane_bam}"
