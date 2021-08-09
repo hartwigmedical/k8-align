@@ -32,7 +32,7 @@ print_push_usage(){
 print_run_usage(){
   echo "Run alignment and deduplication at GCP. Deduplication is only run when the related output path is provided."
   echo "Multiple output paths can be provided to get multiple types of output."
-  echo "USAGE: $0 push \ "
+  echo "USAGE: $0 run \ "
   echo "    --job-name <job-name> \ "
   echo "    --ref-genome <ref-genome> \ "
   echo "    --fastq-input <fastq-input> \ "
