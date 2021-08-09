@@ -33,14 +33,14 @@ print_run_usage(){
   echo "Run alignment and deduplication at GCP. Deduplication is only run when the related output path is provided."
   echo "Multiple output paths can be provided to get multiple types of output."
   echo "USAGE: $0 push \ "
-  echo "    --pod-name <pod-name> \ "
+  echo "    --job-name <job-name> \ "
   echo "    --ref-genome <ref-genome> \ "
   echo "    --fastq-input <fastq-input> \ "
   echo "    --undeduplicated-output <undeduplicated_output> \ "
   echo "    --non-umi-aware-deduplicated-output <non-umi-aware-deduplicated-output> \ "
   echo "    --umi-aware-deduplicated-output <umi-aware-deduplicated-output> \ "
   echo "    --docker-image <docker-image>"
-  echo "  [-n/--pod-name]                           (Required)    Name of the Kubernetes pod"
+  echo "  [-n/--job-name]                           (Required)    Name of the Kubernetes job"
   echo "  [-r/--ref-genome]                         (Required)    Ref genome to align against. Either 37 or 38."
   echo "  [-i/--fastq-input]                        (Required)    Wildcard path that describes the FASTQ files in a bucket,"
   echo "                                                          e.g. gs://some-bucket/*.fastq.gz."
@@ -210,7 +210,7 @@ set_default() {
 run() {
   local unrecognized=()
   local key
-  local pod_name
+  local job_name
   local ref_genome
   local fastq_input
   local undeduplicated_output
@@ -221,8 +221,8 @@ run() {
   do
     key="$1" && shift
     case $key in
-      -n|--pod-name)  # required
-        pod_name="$1" && shift;;
+      -n|--job-name)  # required
+        job_name="$1" && shift;;
       -r|--ref-genome)  # required
         ref_genome="$1" && shift;;
       -i|--fastq-input)  # required
@@ -246,8 +246,8 @@ run() {
     print_error_msg "unrecognized options to ${SCRIPT_NAME}: options=(${unrecognized[*]})"
     input_error=true
   fi
-  if [[ -z ${pod_name} ]]; then
-    print_error_msg "Variable 'pod-name' has not been set"
+  if [[ -z ${job_name} ]]; then
+    print_error_msg "Variable 'job-name' has not been set"
     input_error=true
   fi
   if [[ -z ${fastq_input} ]]; then
@@ -311,11 +311,11 @@ run() {
   gcloud container clusters get-credentials rerun-cluster --region europe-west4 --project hmf-crunch \
         || die "Could not find credentials at gcp"
 
-  local clean_pod_name
-  clean_pod_name="$(echo "${pod_name}" | awk '{print tolower($0)}' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
+  local clean_job_name
+  clean_job_name="$(echo "${job_name}" | awk '{print tolower($0)}' | tr '_' '-' | tr '[:upper:]' '[:lower:]' | tr '.' '-')"
 
   sed \
-  -e "s/VAR_POD_NAME/${clean_pod_name}/g" \
+  -e "s/VAR_JOB_NAME/${clean_job_name}/g" \
   -e "s#DOCKER_IMAGE#${docker_image}#g" \
   -e "s#FASTQ_INPUT#${fastq_input}#g" \
   -e "s#REF_GENOME#${ref_genome}#g" \
