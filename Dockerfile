@@ -17,7 +17,7 @@ RUN wget -qO- https://github.com/lh3/bwa/releases/download/v0.7.17/bwa-0.7.17.ta
     && cd .. \
     && chmod +x bwa \
     && rm -r bwa-0.7.17
-RUN wget -qO- https://github.com/biod/sambamba/releases/download/v0.8.0/sambamba-0.8.0-linux-amd64-static.gz | gunzip -c > sambamba \
+RUN wget -qO- https://github.com/biod/sambamba/releases/download/v0.6.8/sambamba-0.6.8-linux-static.gz | gunzip -c > sambamba \
     && chmod +x sambamba
 RUN git clone https://github.com/Daniel-Liu-c0deb0t/UMICollapse.git \
     && cd UMICollapse \
