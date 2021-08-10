@@ -34,12 +34,12 @@ main() {
   umi_collapse_deduplicated_bam_output=$1 && shift
 
   # sanity checks
+  [[ $# -eq 0 ]] || die "More arguments provided than can be used"
   tool_exists_or_die "${GSUTIL}"
   tool_exists_or_die "${JAVA}"
   file_exists_or_die "${BWA}"
   file_exists_or_die "${SAMBAMBA}"
   file_exists_or_die "${UMI_COLLAPSE}"
-  [[ $# -eq 0 ]] || die "More arguments provided than can be used"
 
   info "Passed sanity checks"
 
