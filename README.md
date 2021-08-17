@@ -1,4 +1,6 @@
 # k8-align
+Functionality is covered by more recent more flexible tool: [k8analysis](https://github.com/hartwigmedical/k8analysis).
+
 Align FASTQ and deduplicate bams in kubernetes.
 
 Note: k8-align is not used for alignment in [pipeline5](https://github.com/hartwigmedical/pipeline5). 
